@@ -1,0 +1,71 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 28a111a..f7371ae 100755
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-cmake_minimum_required(VERSION 2.8)
++cmake_minimum_required(VERSION 3.5)
+ project(ydlidar_sdk C CXX)
+ 
+ #########################################################
+@@ -55,13 +55,13 @@ if(COMMAND cmake_policy)
+ 	cmake_policy(SET CMP0003 NEW) # We don't want to mix relative and absolute paths in linker lib lists.
+ 	cmake_policy(SET CMP0005 NEW) # Escape definitions (-D) strings
+ 	if(POLICY CMP0053)
+-		cmake_policy(SET CMP0053 OLD) # Simplify variable reference and escape sequence evaluation.
++		cmake_policy(SET CMP0053 NEW) # Simplify variable reference and escape sequence evaluation.
+ 	endif()
+ 	if(POLICY CMP0037)
+-		cmake_policy(SET CMP0037 OLD)  # Allow defining target "test"
++		cmake_policy(SET CMP0037 NEW)  # Allow defining target "test"
+ 	endif()
+ 	if(POLICY CMP0043)
+-		cmake_policy(SET CMP0043 OLD) #  Ignore COMPILE_DEFINITIONS_<Config> properties.
++		cmake_policy(SET CMP0043 NEW) #  Ignore COMPILE_DEFINITIONS_<Config> properties.
+ 	endif()
+ endif()
+ 
+@@ -182,6 +182,7 @@ install_package(
+     DESTINATION ${CMAKE_INSTALL_PREFIX}/include
+     INCLUDE_DIRS ${SDK_INCS}
+     LINK_LIBS ${SDK_LIBS}
++    LINK_DIRS ${CMAKE_INSTALL_PREFIX}/lib
+     )
+ #########################################################################################
+ # install doc
+diff --git a/cmake/install_package.cmake b/cmake/install_package.cmake
+index d34d66c..b4d65a4 100644
+--- a/cmake/install_package.cmake
++++ b/cmake/install_package.cmake
+@@ -98,9 +98,9 @@ function(install_package)
+         # add "installed" library to list of required libraries to link against
+         if( PACKAGE_LIB_NAME )
+             if(POLICY CMP0026)
+-              cmake_policy( SET CMP0026 OLD )
++              cmake_policy( SET CMP0026 NEW )
+             endif()
+-            get_target_property( _target_library ${PACKAGE_LIB_NAME} LOCATION )
++            set(_target_library "$<TARGET_FILE:${PACKAGE_LIB_NAME}>")
+             get_filename_component( _lib ${_target_library} NAME )
+             list( INSERT PACKAGE_LINK_LIBS 0 ${PACKAGE_LIB_NAME} )
+         endif()
+@@ -190,7 +190,6 @@ function(install_package)
+ 
+         install(FILES
+             ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake
+-            ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Targets.cmake
+             ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake
+             DESTINATION
+             lib/cmake/${PROJECT_NAME})
+@@ -212,9 +211,9 @@ function(install_package)
+ 
+       if( PACKAGE_LIB_NAME )
+             if(POLICY CMP0026)
+-              cmake_policy( SET CMP0026 OLD )
++              cmake_policy( SET CMP0026 NEW )
+             endif()
+-            get_target_property( _target_library ${PACKAGE_LIB_NAME} LOCATION )
++            set(_target_library "$<TARGET_FILE:${PACKAGE_LIB_NAME}>")
+             list( INSERT PACKAGE_LINK_LIBS 0 ${_target_library} )
+         endif()
+ 

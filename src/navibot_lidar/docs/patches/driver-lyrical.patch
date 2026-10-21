@@ -1,0 +1,51 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index af4e2b2..9df7e56 100755
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -5,7 +5,7 @@ project(ydlidar_ros2_driver C CXX)
+ ##################ros2#############################################
+ # Default to C++14
+ if(NOT CMAKE_CXX_STANDARD)
+-  set(CMAKE_CXX_STANDARD 14)
++  set(CMAKE_CXX_STANDARD 17)
+ endif()
+ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+   add_compile_options(-Wall -Wextra -Wpedantic)
+@@ -42,12 +42,12 @@ add_executable(${PROJECT_NAME}_node
+ #---------------------------------------------------------------------------------------
+ # link libraries
+ #--------------------------------------------------------------------------------------
+-ament_target_dependencies(${PROJECT_NAME}_node
+-    "rclcpp"
+-    "sensor_msgs"
+-    "visualization_msgs"
+-    "geometry_msgs"
+-    "std_srvs"
++target_link_libraries(${PROJECT_NAME}_node
++    rclcpp::rclcpp
++    ${sensor_msgs_TARGETS}
++    ${visualization_msgs_TARGETS}
++    ${geometry_msgs_TARGETS}
++    ${std_srvs_TARGETS}
+     )
+ 
+ target_link_libraries(${PROJECT_NAME}_node
+@@ -61,12 +61,12 @@ add_executable(${PROJECT_NAME}_client
+ #---------------------------------------------------------------------------------------
+ # link libraries
+ #--------------------------------------------------------------------------------------
+-ament_target_dependencies(${PROJECT_NAME}_client
+-    "rclcpp"
+-    "sensor_msgs"
+-    "visualization_msgs"
+-    "geometry_msgs"
+-    "std_srvs"
++target_link_libraries(${PROJECT_NAME}_client
++    rclcpp::rclcpp
++    ${sensor_msgs_TARGETS}
++    ${visualization_msgs_TARGETS}
++    ${geometry_msgs_TARGETS}
++    ${std_srvs_TARGETS}
+     )
+ 
+ #---------------------------------------------------------------------------------------

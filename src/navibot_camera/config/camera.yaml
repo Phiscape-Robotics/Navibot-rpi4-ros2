@@ -1,0 +1,12 @@
+/camera:
+  ros__parameters:
+    camera: 0
+    role: video
+    format: RGB888
+    width: 640
+    height: 480
+    # Use the binned full-field sensor mode rather than a cropped VGA mode.
+    sensor_mode: '1640:1232'
+    frame_id: camera_optical_frame
+    orientation: 0
+    FrameDurationLimits: [66667, 66667]

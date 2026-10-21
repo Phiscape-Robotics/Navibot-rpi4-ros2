@@ -1,0 +1,12 @@
+/motor_bridge:
+  ros__parameters:
+    port: /dev/ttyUSB0
+    baudrate: 115200
+    front_address: 1
+    rear_address: 2
+    # Total transactions/sec; each Nano receives half this rate.
+    poll_rate: 50.0
+    reply_timeout: 0.012
+    command_timeout: 0.25
+    feedback_timeout: 0.25
+    max_rpm: 135.0

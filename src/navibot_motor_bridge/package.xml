@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>navibot_motor_bridge</name><version>0.1.0</version>
+  <description>Addressed RS485 bridge for front and rear Nano wheel controllers.</description>
+  <maintainer email="rpi@navibot.local">Navibot</maintainer><license>Apache-2.0</license>
+  <buildtool_depend>ament_python</buildtool_depend>
+  <exec_depend>rclpy</exec_depend><exec_depend>std_msgs</exec_depend>
+  <exec_depend>python3-serial</exec_depend><exec_depend>launch_ros</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <export><build_type>ament_python</build_type></export>
+</package>
