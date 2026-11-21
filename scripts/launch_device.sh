@@ -2,9 +2,9 @@
 # Launch one Navibot device and save its console output under logs/.
 # Usage: ./scripts/launch_device.sh camera
 #        ./scripts/launch_device.sh lidar port:=/dev/ttyUSB1
-#        ./scripts/launch_device.sh motor_bridge port:=/dev/ttyUSB0
+#        ./scripts/launch_device.sh motor_bridge
 
-set -Eeuo pipefail
+set -Eeo pipefail
 
 workspace_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ros_setup=/opt/ros/lyrical/setup.bash
@@ -43,7 +43,10 @@ case "$device" in
         ;;
 esac
 
+# ROS setup scripts read optional environment variables before initializing
+# them, so source them before enabling nounset (set -u).
 source "$ros_setup"
 source "$workspace_setup"
+set -u
 mkdir -p "$workspace_dir/logs"
 "${launch[@]}" 2>&1 | tee "$log_file"

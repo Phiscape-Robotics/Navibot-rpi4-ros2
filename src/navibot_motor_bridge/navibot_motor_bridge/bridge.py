@@ -15,7 +15,7 @@ class MotorBridge(Node):
     def __init__(self):
         super().__init__('motor_bridge')
         defaults = {
-            'port': '/dev/ttyUSB0', 'baudrate': 9600,
+            'port': '/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0', 'baudrate': 9600,
             'front_address': 1, 'rear_address': 2,
             'poll_rate': 20.0, 'reply_timeout': 0.04,
             'command_timeout': 0.25, 'feedback_timeout': 0.25,

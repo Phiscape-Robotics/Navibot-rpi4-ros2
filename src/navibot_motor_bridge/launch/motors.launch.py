@@ -9,7 +9,9 @@ from launch_ros.actions import Node
 def generate_launch_description():
     config = str(Path(get_package_share_directory('navibot_motor_bridge')) / 'config/motors.yaml')
     return LaunchDescription([
-        DeclareLaunchArgument('port', default_value='/dev/ttyUSB0'),
+        DeclareLaunchArgument(
+            'port',
+            default_value='/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0'),
         Node(package='navibot_motor_bridge', executable='motor_bridge',
              name='motor_bridge', output='screen',
              parameters=[config, {'port': LaunchConfiguration('port')}]),

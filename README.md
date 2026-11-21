@@ -71,15 +71,15 @@ terminal and save it to `logs/camera.log`, `logs/lidar.log`, or
 # Pi Camera V2.
 ./scripts/launch_device.sh camera
 
-# Motor bridge; replace the placeholder with the RS485 adapter's actual path.
-./scripts/launch_device.sh motor_bridge port:=/dev/serial/by-id/YOUR_RS485_ADAPTER
+# Motor bridge; defaults to this Pi's stable RS485 adapter path.
+./scripts/launch_device.sh motor_bridge
 ```
 
 Or start all three nodes from one terminal:
 
 ```bash
 cd ~/navibot_ws
-MOTOR_PORT=/dev/serial/by-id/YOUR_RS485_ADAPTER ./scripts/launch_navibot.sh
+MOTOR_PORT=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0 ./scripts/launch_navibot.sh
 ```
 
 Set `LIDAR_PORT` too when the LiDAR is not on its configured stable path.

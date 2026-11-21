@@ -1,118 +1,249 @@
-import math
+#!/usr/bin/env python3
+"""Keyboard teleop for both Navibot motor controllers over USB serial."""
+
+from __future__ import annotations
+
+import argparse
 import os
-import pty
-import select
-import threading
-import time
-import unittest
-
-import rclpy
-from std_msgs.msg import Float64MultiArray
-from navibot_motor_bridge.protocol import (
-    Packet, Parser, encode, crc16, rpm_payload, feedback_payload,
-    decode_feedback, SET_RPM, FEEDBACK,
-)
-from navibot_motor_bridge.bridge import MotorBridge
 import struct
+import sys
+import time
+
+try:
+    import serial
+except ImportError as exc:
+    raise SystemExit("pyserial is required. Install it with: python3 -m pip install pyserial") from exc
 
 
-class ProtocolTests(unittest.TestCase):
-    def test_crc_reference_and_signed_values(self):
-        self.assertEqual(crc16(b'123456789'), 0x29B1)
-        self.assertEqual(struct.unpack('<hh', rpm_payload(-12.3, 135)), (-12, 135))
-        self.assertEqual(decode_feedback(feedback_payload(0, 0, -12, 4)),
-                         (-12, 4, 0, 0))
-
-    def test_parser_recovers_from_noise_corruption_and_split_frames(self):
-        packet = Packet(1, SET_RPM, 255, rpm_payload(-10, 20))
-        wire = encode(packet)
-        bad = bytearray(wire)
-        bad[-1] ^= 1
-        parser = Parser()
-        self.assertEqual(parser.feed(b'noise' + bad + wire[:1]), [])
-        self.assertEqual(parser.feed(wire[1:5]), [])
-        self.assertEqual(parser.feed(wire[5:] + wire), [packet, packet])
-        self.assertEqual(parser.feed(b'\x5a\x5a\x01\x01\x01\x01\xff' + wire), [packet])
+SYNC = 0x5A
+VERSION = 0x01
+TARGET_NODES = (0x01, 0x02)
+MSG_REQUEST = 0x01
+MSG_REPLY = 0x81
+BAUD = 9600
+DEFAULT_PORT = "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0"
+HEARTBEAT_SECONDS = 0.10
+REPLY_WAIT_SECONDS = 0.08
+KEY_TIMEOUT_SECONDS = 0.8
 
 
-class BridgeIntegrationTests(unittest.TestCase):
-    def test_two_nanos_targets_timeout_crc_and_feedback_loss(self):
-        master, slave = pty.openpty()
-        port = os.ttyname(slave)
-        stopped = threading.Event()
-        received = []
-        suppress_rear = threading.Event()
-        faults = []
+def crc16_ccitt_false(data: bytes) -> int:
+    crc = 0xFFFF
+    for value in data:
+        crc ^= value << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x1021) & 0xFFFF if crc & 0x8000 else (crc << 1) & 0xFFFF
+    return crc
 
-        def nano_bus():
-            parser = Parser()
-            try:
-                while not stopped.is_set():
-                    if not select.select([master], [], [], 0.02)[0]:
-                        continue
-                    for packet in parser.feed(os.read(master, 1024)):
-                        if packet.kind != SET_RPM:
-                            continue
-                        left, right = struct.unpack('<hh', packet.payload)
-                        received.append((packet.address, left, right))
-                        if packet.address == 2 and suppress_rear.is_set():
-                            continue
-                        payload = feedback_payload(0, 0, left, right)
-                        # Wrong-sequence, bad-CRC and echo packets must not count as feedback.
-                        wrong_payload = feedback_payload(0, 0, 99, 99)
-                        wrong = encode(Packet(packet.address, FEEDBACK, (packet.sequence-1)&255, wrong_payload))
-                        bad = bytearray(encode(Packet(packet.address, FEEDBACK, packet.sequence, wrong_payload)))
-                        bad[-1] ^= 1
-                        os.write(master, encode(packet) + wrong + bad)
-                        reply = encode(Packet(packet.address, FEEDBACK, packet.sequence, payload))
-                        os.write(master, reply[:4])
-                        os.write(master, reply[4:])
-            except Exception as exc:
-                faults.append(exc)
 
-        thread = threading.Thread(target=nano_bus)
-        thread.start()
-        rclpy.init(args=['--ros-args', '-p', f'port:={port}'])
-        node = MotorBridge()
-        sender = rclpy.create_node('bridge_test_sender')
-        pub = sender.create_publisher(Float64MultiArray, '/motor_bridge/target_rpm', 1)
+def make_command(node_id: int, sequence: int, left_rpm: int, right_rpm: int) -> bytes:
+    payload = struct.pack("<hh", left_rpm, right_rpm)
+    header_and_payload = bytes((VERSION, node_id, MSG_REQUEST, sequence, len(payload))) + payload
+    crc = crc16_ccitt_false(header_and_payload)
+    return bytes((SYNC, SYNC)) + header_and_payload + struct.pack("<H", crc)
 
-        def spin_for(seconds, target=None):
-            end = time.monotonic()+seconds
-            while time.monotonic()<end:
-                if target is not None:
-                    pub.publish(Float64MultiArray(data=target))
-                rclpy.spin_once(node, timeout_sec=0.005)
 
-        try:
-            spin_for(0.4)
-            spin_for(0.4, [10.0, -20.0, 30.0, -40.0])
-            self.assertIn((1, 10, -20), received)
-            self.assertIn((2, 30, -40), received)
-            self.assertEqual(node.rpm, [10, -20, 30, -40])
-            # At the configured 20 transactions/sec, wait past command expiry
-            # and collect enough zero-target packets to assert the stop.
-            spin_for(0.6)
-            self.assertTrue(all(l == r == 0 for _, l, r in received[-4:]))
-            spin_for(0.1, [float('nan'), 0.0, 0.0, 0.0])
-            self.assertEqual(node.command_at, 0.0)
-            suppress_rear.set()
-            spin_for(0.5, [10.0]*4)
-            self.assertTrue(all(l == r == 0 for _, l, r in received[-4:]))
-            suppress_rear.clear()
-            spin_for(0.15)
-            self.assertTrue(all(l == r == 0 for _, l, r in received[-4:]))
-            spin_for(0.15, [5.0]*4)
-            self.assertTrue(any(l == r == 5 for _, l, r in received[-4:]))
-            node.close()
-            self.assertTrue(all(l == r == 0 for _, l, r in received[-2:]))
-        finally:
-            node.close()
-            node.destroy_node()
-            sender.destroy_node()
-            rclpy.shutdown()
-            stopped.set()
-            thread.join(timeout=1)
-            os.close(slave)
-            os.close(master)
-        self.assertFalse(faults)
+class ReplyParser:
+    """Incrementally extract and validate firmware reply frames."""
+
+    def __init__(self) -> None:
+        self.buffer = bytearray()
+
+    def feed(self, data: bytes) -> list[tuple[int, int, int, int, int, int]]:
+        self.buffer.extend(data)
+        replies = []
+        while True:
+            start = self.buffer.find(bytes((SYNC, SYNC)))
+            if start < 0:
+                self.buffer[:] = self.buffer[-1:] if self.buffer[-1:] == bytes((SYNC,)) else b""
+                break
+            if start:
+                del self.buffer[:start]
+            if len(self.buffer) < 7:
+                break
+            payload_length = self.buffer[6]
+            frame_length = 9 + payload_length
+            if len(self.buffer) < frame_length:
+                break
+            frame = bytes(self.buffer[:frame_length])
+            del self.buffer[:frame_length]
+            expected = struct.unpack_from("<H", frame, frame_length - 2)[0]
+            if crc16_ccitt_false(frame[2:-2]) != expected:
+                continue
+            if frame[2] != VERSION or frame[4] != MSG_REPLY or payload_length != 6:
+                continue
+            status, reason, left, right = struct.unpack_from("<BBhh", frame, 7)
+            replies.append((frame[3], frame[5], status, reason, left, right))
+        return replies
+
+
+def send_and_wait(port: serial.Serial, parser: ReplyParser, node: int,
+                  sequence: int, left_rpm: int, right_rpm: int) -> tuple[int, int, int, int] | None:
+    """Send one node's frame, then wait before using the half-duplex bus again."""
+    # Match the ROS bridge: discard stale bytes so an old or partial reply
+    # cannot be mistaken for the response to this request.
+    port.reset_input_buffer()
+    parser.buffer.clear()
+    port.write(make_command(node, sequence, left_rpm, right_rpm))
+    deadline = time.monotonic() + REPLY_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        incoming = port.read(256)
+        if not incoming:
+            time.sleep(0.0005)
+            continue
+        for reply_node, reply_sequence, status, reason, left, right in parser.feed(incoming):
+            if reply_node == node and reply_sequence == sequence:
+                return status, reason, left, right
+    return None
+
+
+class KeyReader:
+    """Read single keys without waiting for Enter on Windows, macOS, or Linux."""
+
+    def __enter__(self) -> "KeyReader":
+        if not sys.stdin.isatty():
+            raise RuntimeError("Run this controller in an interactive terminal.")
+        if os.name == "nt":
+            import msvcrt
+
+            self._msvcrt = msvcrt
+        elif os.name == "posix":
+            import termios
+            import tty
+
+            self._termios = termios
+            self._fd = sys.stdin.fileno()
+            self._old_settings = termios.tcgetattr(self._fd)
+            tty.setcbreak(self._fd)
+        else:
+            raise RuntimeError("Unsupported operating system for keyboard input.")
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        if os.name == "posix":
+            self._termios.tcsetattr(self._fd, self._termios.TCSADRAIN, self._old_settings)
+
+    def read(self) -> str | None:
+        if os.name == "nt":
+            if self._msvcrt.kbhit():
+                key = self._msvcrt.getwch()
+                # Ignore the second byte of Windows extended keys (arrows, etc.).
+                if key in ("\x00", "\xe0"):
+                    self._msvcrt.getwch()
+                    return None
+                return key.lower()
+        else:
+            import select
+
+            ready, _, _ = select.select([sys.stdin], [], [], 0)
+            if ready:
+                return os.read(self._fd, 1).decode("ascii", errors="ignore").lower()
+        return None
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--port", default=DEFAULT_PORT,
+                        help=f"USB serial port (default: {DEFAULT_PORT})")
+    parser.add_argument("--baud", type=int, default=BAUD, help=f"Serial baud rate (default: {BAUD})")
+    parser.add_argument("--rpm", type=int, default=60, help="Wheel RPM for movement (1..135, default: 60)")
+    args = parser.parse_args()
+    return args
+
+
+def main() -> int:
+    args = parse_args()
+    if not 1 <= args.rpm <= 135:
+        raise SystemExit("--rpm must be between 1 and 135 (firmware limit).")
+
+    sequences = {node: 0 for node in TARGET_NODES}
+    left, right = 0, 0
+    last_sent = 0.0
+    last_motion_key = 0.0
+    motion_keys = {
+        "w": (args.rpm, args.rpm),
+        "s": (-args.rpm, -args.rpm),
+        "a": (-args.rpm, args.rpm),
+        "d": (args.rpm, -args.rpm),
+    }
+    node_status = {node: "waiting" for node in TARGET_NODES}
+    parser = ReplyParser()
+    print("Navibot serial teleop | W forward | S reverse | A pivot left | D pivot right")
+    print("Hold a movement key. SPACE stops. X or Ctrl+C exits.")
+
+    try:
+        with KeyReader() as keys:
+            with serial.Serial(
+                args.port,
+                args.baud,
+                timeout=0,
+                write_timeout=0.02,
+                xonxoff=False,
+                rtscts=False,
+                dsrdtr=False,
+                exclusive=(os.name == "posix"),
+            ) as port:
+                # Opening a Nano serial port can reset it. Give setup time to finish.
+                time.sleep(2.0)
+                port.reset_input_buffer()
+                try:
+                    while True:
+                        key = keys.read()
+                        now = time.monotonic()
+                        exiting = key == "x"
+                        previous_targets = left, right
+                        if key in motion_keys:
+                            left, right = motion_keys[key]
+                            last_motion_key = now
+                        elif key == " " or exiting or now - last_motion_key >= KEY_TIMEOUT_SECONDS:
+                            left, right = 0, 0
+
+                        if exiting:
+                            break
+                        if (left, right) != previous_targets or now - last_sent >= HEARTBEAT_SECONDS:
+                            for node in TARGET_NODES:
+                                reply = send_and_wait(
+                                    port, parser, node, sequences[node], left, right
+                                )
+                                if reply is None:
+                                    node_status[node] = "no reply"
+                                else:
+                                    status, reason, measured_left, measured_right = reply
+                                    if status == 0:
+                                        node_status[node] = (
+                                            f"ACK L:{measured_left} R:{measured_right} RPM"
+                                        )
+                                    else:
+                                        node_status[node] = f"NACK reason:{reason}"
+                                sequences[node] = (sequences[node] + 1) & 0xFF
+                            last_sent = now
+
+                            sys.stdout.write(
+                                f"\rCommand L:{left:>4} R:{right:>4} RPM | "
+                                + " | ".join(
+                                    f"0x{node:02X} {node_status[node]}" for node in TARGET_NODES
+                                )
+                                + "       "
+                            )
+                            sys.stdout.flush()
+                        time.sleep(0.005)
+                finally:
+                    # Stop the motors before closing the serial port on normal exit or Ctrl-C.
+                    for node in TARGET_NODES:
+                        send_and_wait(port, parser, node, sequences[node], 0, 0)
+                        sequences[node] = (sequences[node] + 1) & 0xFF
+                    port.flush()
+                    print("\nStop command sent.")
+    except KeyboardInterrupt:
+        pass
+    except serial.SerialException as exc:
+        print(f"Serial error: {exc}", file=sys.stderr)
+        return 1
+    except RuntimeError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

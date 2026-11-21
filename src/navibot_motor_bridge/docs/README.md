@@ -12,8 +12,9 @@ ls -l /dev/serial/by-id/
 ros2 launch navibot_motor_bridge motors.launch.py port:=/dev/serial/by-id/YOUR_ADAPTER
 ```
 
-Default port is /dev/ttyUSB0. Prefer the by-id path when available, especially
-when connecting the USB LiDAR too. User rpi already belongs to dialout.
+Default port is `/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0`, the RS485
+adapter identified on this Pi. Override it with the `port` launch argument if
+the adapter is replaced. User rpi already belongs to dialout.
 Python dependency: python3-serial (installed on this Pi).
 
 Topics (Float64MultiArray order: front_left, front_right, rear_left, rear_right):
@@ -59,7 +60,7 @@ Defaults are in [config/motors.yaml](../config/motors.yaml).
 
 | Parameter | Default | Purpose |
 |---|---|---|
-| `port` | `/dev/ttyUSB0` | USB adapter serial device; overridable at launch |
+| `port` | `/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0` | RS485 adapter; overridable at launch |
 | `baudrate` | `9600` | Bus baud rate, 8N1 |
 | `front_address` | `1` | Nano controlling front-left and front-right |
 | `rear_address` | `2` | Nano controlling rear-left and rear-right |

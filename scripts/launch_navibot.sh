@@ -24,7 +24,7 @@ source "$ros_setup"
 source "$workspace_setup"
 set -u
 
-motor_port="${MOTOR_PORT:-/dev/ttyUSB0}"
+motor_port="${MOTOR_PORT:-/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0}"
 lidar_port="${LIDAR_PORT:-}"
 log_dir="$workspace_dir/logs"
 mkdir -p "$log_dir"
