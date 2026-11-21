@@ -2,20 +2,22 @@
 import struct
 from dataclasses import dataclass
 
-SYNC = b'\xaa\x55'
+SYNC = b'\x5a\x5a'
 VERSION = 1
 SET_RPM = 0x01
 FEEDBACK = 0x81
+ACK_STATUS = 0
+NACK_STATUS = 1
 MAX_PAYLOAD = 16
 
 
 def crc16(data: bytes) -> int:
-    """CRC-16/MODBUS: init FFFF, reflected polynomial A001, no final XOR."""
+    """CRC-16/CCITT-FALSE as implemented by the Nano (init FFFF, poly 1021)."""
     crc = 0xFFFF
     for byte in data:
-        crc ^= byte
+        crc ^= byte << 8
         for _ in range(8):
-            crc = (crc >> 1) ^ (0xA001 if crc & 1 else 0)
+            crc = ((crc << 1) ^ 0x1021) & 0xFFFF if crc & 0x8000 else (crc << 1) & 0xFFFF
     return crc
 
 
@@ -46,7 +48,7 @@ class Parser:
         while True:
             start = self.buffer.find(SYNC)
             if start < 0:
-                self.buffer[:] = b'\xaa' if self.buffer.endswith(b'\xaa') else b''
+                self.buffer[:] = b'\x5a' if self.buffer.endswith(b'\x5a') else b''
                 break
             del self.buffer[:start]
             if len(self.buffer) < 7:
@@ -69,19 +71,19 @@ class Parser:
 
 
 def rpm_payload(left: float, right: float) -> bytes:
-    return struct.pack('<hh', round(left * 10), round(right * 10))
+    """Nano request payload uses signed whole RPM, not tenths of RPM."""
+    return struct.pack('<hh', round(left), round(right))
 
 
-def feedback_payload(left: float, right: float, left_duty: int,
-                     right_duty: int, sample_ms: int, status: int) -> bytes:
-    return struct.pack('<hhhhIH', round(left * 10), round(right * 10),
-                       left_duty, right_duty, sample_ms, status)
+def feedback_payload(status: int, reason: int, left: float, right: float) -> bytes:
+    """Nano reply: status, reason, then signed whole-RPM measurements."""
+    return struct.pack('<BBhh', status, reason, round(left), round(right))
 
 
 def decode_feedback(payload: bytes):
-    if len(payload) != 14:
-        raise ValueError('feedback must contain 14 bytes')
-    left, right, dl, dr, sample, status = struct.unpack('<hhhhIH', payload)
-    if abs(dl) > 1000 or abs(dr) > 1000:
-        raise ValueError('invalid feedback duty')
-    return left / 10, right / 10, dl, dr, sample, status
+    if len(payload) != 6:
+        raise ValueError('reply must contain 6 bytes')
+    status, reason, left, right = struct.unpack('<BBhh', payload)
+    if status not in (0, 1):
+        raise ValueError('invalid reply status')
+    return left, right, status, reason

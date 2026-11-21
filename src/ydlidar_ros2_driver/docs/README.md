@@ -4,7 +4,7 @@ This is the manufacturer's `humble` branch, adapted locally for ROS 2 Lyrical.
 Use the robot launch package rather than the upstream default launch files:
 
 ```bash
-source ~/ros2_ws/install/setup.bash
+source ~/navibot_ws/install/setup.bash
 ros2 launch navibot_lidar lidar.launch.py
 ```
 

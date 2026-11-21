@@ -1,0 +1,6 @@
+[INFO] [launch]: All log files can be found below /home/rpi/.ros/log/2026-11-21-14-27-25-437463-navibot-11631
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [motor_bridge-1]: process started with pid [11663]
+[motor_bridge-1] [INFO] [1795271247.758229109] [motor_bridge]: Wheel order: front_left, front_right, rear_left, rear_right
+[motor_bridge-1] [INFO] [1795271247.772808755] [motor_bridge]: Opened /dev/ttyUSB0; awaiting fresh RPM commands
+[INFO] [motor_bridge-1]: process has finished cleanly [pid 11663]

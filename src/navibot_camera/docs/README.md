@@ -10,7 +10,7 @@ unsupported stream settings; verify the startup log on the actual sensor.
 ```bash
 ~/setup-camera.sh
 source /opt/ros/lyrical/setup.bash
-source ~/ros2_ws/install/setup.bash
+source ~/navibot_ws/install/setup.bash
 ros2 launch navibot_camera camera.launch.py
 ```
 

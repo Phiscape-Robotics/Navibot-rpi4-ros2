@@ -10,7 +10,7 @@ The local source trees are already fetched and patched for this system:
 ```bash
 ~/setup-lidar.sh
 source /opt/ros/lyrical/setup.bash
-source ~/ros2_ws/install/setup.bash
+source ~/navibot_ws/install/setup.bash
 ros2 launch navibot_lidar lidar.launch.py
 ```
 

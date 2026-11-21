@@ -29,8 +29,8 @@ before using it on another installation.
 ## Clone and build
 
 ```bash
-git clone https://github.com/Phiscape-Robotics/Navibot-rpi4-ros2.git ~/ros2_ws
-cd ~/ros2_ws
+git clone https://github.com/Phiscape-Robotics/Navibot-rpi4-ros2.git ~/navibot_ws
+cd ~/navibot_ws
 source /opt/ros/lyrical/setup.bash
 colcon build --symlink-install --parallel-workers 1 --cmake-args \
   -DCMAKE_BUILD_TYPE=Release \
@@ -55,21 +55,37 @@ In each terminal, first source ROS and the workspace:
 
 ```bash
 source /opt/ros/lyrical/setup.bash
-source ~/ros2_ws/install/setup.bash
+source ~/navibot_ws/install/setup.bash
 ```
 
-Run each device in a separate terminal:
+Run each device in a separate terminal. These commands show output in the
+terminal and save it to `logs/camera.log`, `logs/lidar.log`, or
+`logs/motor_bridge.log` (each run replaces that device's previous log):
 
 ```bash
 # YDLIDAR X2; override port if the configured adapter path differs.
-ros2 launch navibot_lidar lidar.launch.py
+./scripts/launch_device.sh lidar
+# Example with an alternate LiDAR port:
+./scripts/launch_device.sh lidar port:=/dev/ttyUSB1
 
 # Pi Camera V2.
-ros2 launch navibot_camera camera.launch.py
+./scripts/launch_device.sh camera
 
 # Motor bridge; replace the placeholder with the RS485 adapter's actual path.
-ros2 launch navibot_motor_bridge motors.launch.py port:=/dev/serial/by-id/YOUR_RS485_ADAPTER
+./scripts/launch_device.sh motor_bridge port:=/dev/serial/by-id/YOUR_RS485_ADAPTER
 ```
+
+Or start all three nodes from one terminal:
+
+```bash
+cd ~/navibot_ws
+MOTOR_PORT=/dev/serial/by-id/YOUR_RS485_ADAPTER ./scripts/launch_navibot.sh
+```
+
+Set `LIDAR_PORT` too when the LiDAR is not on its configured stable path.
+The script stops all three launches on Ctrl-C. It does not start the student
+direct-UART sender, because that node would contend with the motor bridge for
+the RS485 adapter.
 
 Find serial devices with `ls -l /dev/serial/by-id/`. Use separate device paths
 for the LiDAR and motor adapter. The motor controllers require firmware matching
@@ -85,7 +101,7 @@ lift all wheels clear and have a motor-power stop ready.
 | `/camera/camera_info` | `sensor_msgs/msg/CameraInfo` | Camera calibration information |
 | `/motor_bridge/target_rpm` | `std_msgs/msg/Float64MultiArray` | Four signed wheel RPM targets |
 | `/motor_bridge/wheel_rpm` | `std_msgs/msg/Float64MultiArray` | Wheel speed feedback |
-| `/motor_bridge/wheel_duty` | `std_msgs/msg/Float64MultiArray` | Applied motor duty |
+| `/motor_bridge/wheel_duty` | `std_msgs/msg/Float64MultiArray` | NaN; current Nano reply has no duty fields |
 | `/motor_bridge/status` | `std_msgs/msg/String` | Controller freshness and status |
 
 Wheel arrays use `front_left, front_right, rear_left, rear_right` order.
@@ -112,7 +128,7 @@ Run the motor bridge tests without driving hardware:
 
 ```bash
 source /opt/ros/lyrical/setup.bash
-cd ~/ros2_ws/src/navibot_motor_bridge
+cd ~/navibot_ws/src/navibot_motor_bridge
 python3 -m unittest discover -s test -v
 ```
 

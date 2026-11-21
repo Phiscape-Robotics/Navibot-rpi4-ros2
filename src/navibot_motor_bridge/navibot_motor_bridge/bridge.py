@@ -7,16 +7,17 @@ from rclpy.node import Node
 import serial
 from std_msgs.msg import Float64MultiArray, String
 
-from .protocol import Packet, Parser, SET_RPM, FEEDBACK, encode, rpm_payload, decode_feedback
+from .protocol import (Packet, Parser, SET_RPM, FEEDBACK, ACK_STATUS,
+                       encode, rpm_payload, decode_feedback)
 
 
 class MotorBridge(Node):
     def __init__(self):
         super().__init__('motor_bridge')
         defaults = {
-            'port': '/dev/ttyUSB0', 'baudrate': 115200,
+            'port': '/dev/ttyUSB0', 'baudrate': 9600,
             'front_address': 1, 'rear_address': 2,
-            'poll_rate': 50.0, 'reply_timeout': 0.012,
+            'poll_rate': 20.0, 'reply_timeout': 0.04,
             'command_timeout': 0.25, 'feedback_timeout': 0.25,
             'max_rpm': 135.0,
         }
@@ -45,7 +46,7 @@ class MotorBridge(Node):
         self.duty = [float('nan')] * 4
         self.feedback_at = [0.0, 0.0]
         self.status = [0, 0]
-        self.sample_ms = [0, 0]
+        self.reason = [0, 0]
         self.rpm_pub = self.create_publisher(Float64MultiArray, '~/wheel_rpm', 10)
         self.duty_pub = self.create_publisher(Float64MultiArray, '~/wheel_duty', 10)
         self.status_pub = self.create_publisher(String, '~/status', 10)
@@ -117,8 +118,9 @@ class MotorBridge(Node):
         self.index = 1 - self.index
         now = time.monotonic()
         # Loss of either controller inhibits motion on all four wheels.
-        healthy = all(t and now - t <= self.cfg['feedback_timeout']
-                      for t in self.feedback_at) and not any(s & 0x0006 for s in self.status)
+        healthy = (all(t and now - t <= self.cfg['feedback_timeout']
+                       for t in self.feedback_at) and
+                   all(s == ACK_STATUS for s in self.status))
         valid = self.command_at and now - self.command_at <= self.cfg['command_timeout']
         if not healthy:
             self.command_at = 0.0
@@ -126,12 +128,12 @@ class MotorBridge(Node):
         try:
             reply = self.exchange(index, *targets[2 * index:2 * index + 2])
             if reply is not None:
-                left, right, dl, dr, sample, status = reply
+                left, right, status, reason = reply
                 self.rpm[2 * index:2 * index + 2] = [left, right]
-                self.duty[2 * index:2 * index + 2] = [dl / 10.0, dr / 10.0]
+                self.duty[2 * index:2 * index + 2] = [float('nan'), float('nan')]
                 self.feedback_at[index] = time.monotonic()
-                self.sample_ms[index] = sample
                 self.status[index] = status
+                self.reason[index] = reason
         except (serial.SerialException, OSError) as exc:
             self.get_logger().error(f'Serial failure: {exc}')
             self.bus.close()
@@ -148,8 +150,8 @@ class MotorBridge(Node):
             if not fresh:
                 rpm[2*i:2*i+2] = [float('nan')] * 2
                 duty[2*i:2*i+2] = [float('nan')] * 2
-            states.append(f'{self.addresses[i]}:fresh={fresh},flags={self.status[i]},'
-                          f'sample_ms={self.sample_ms[i]}')
+            states.append(f'{self.addresses[i]}:fresh={fresh},status={self.status[i]},'
+                          f'reason={self.reason[i]}')
         self.rpm_pub.publish(Float64MultiArray(data=rpm))
         self.duty_pub.publish(Float64MultiArray(data=duty))
         self.status_pub.publish(String(data='; '.join(states)))

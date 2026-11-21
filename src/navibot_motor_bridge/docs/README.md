@@ -5,7 +5,7 @@ See [PROTOCOL.md](../PROTOCOL.md) for the Nano firmware contract. Firmware is no
 
 ```bash
 source /opt/ros/lyrical/setup.bash
-cd ~/ros2_ws
+cd ~/navibot_ws
 colcon build --symlink-install --packages-select navibot_motor_bridge
 source install/setup.bash
 ls -l /dev/serial/by-id/
@@ -18,13 +18,13 @@ Python dependency: python3-serial (installed on this Pi).
 
 Topics (Float64MultiArray order: front_left, front_right, rear_left, rear_right):
 
-- `/motor_bridge/target_rpm`: four signed RPM targets, +/-135 initially.
+- `/motor_bridge/target_rpm`: four signed whole-RPM targets, +/-135 initially.
   Publish repeatedly; command expires after 250 ms. Invalid commands request zero.
 - `/motor_bridge/wheel_rpm`: measured wheel RPM; disconnected/stale wheels are NaN.
-- `/motor_bridge/wheel_duty`: applied duty percentage, -100 to +100; stale is NaN.
-- `/motor_bridge/status`: String containing freshness, Nano flags and sample times.
+- `/motor_bridge/wheel_duty`: NaN (the current Nano reply has no duty fields).
+- `/motor_bridge/status`: String containing freshness and Nano ACK/NACK status and reason.
 
-Feedback ROS topics publish at 5 Hz; serial feedback arrives at 25 Hz per Nano.
+Feedback ROS topics publish at 5 Hz; serial replies arrive at 10 Hz per Nano.
 Values combine latest readings from independently polled controllers, not a
 synchronized four-wheel snapshot. This is not yet a cmd_vel/odometry interface;
 wheel diameter, track width and steering geometry are still needed.
@@ -46,7 +46,7 @@ Tests, including two simulated Nanos over a Linux pseudo-terminal:
 
 ```bash
 source /opt/ros/lyrical/setup.bash
-cd ~/ros2_ws/src/navibot_motor_bridge
+cd ~/navibot_ws/src/navibot_motor_bridge
 python3 -m unittest discover -s test -v
 ```
 
@@ -60,11 +60,11 @@ Defaults are in [config/motors.yaml](../config/motors.yaml).
 | Parameter | Default | Purpose |
 |---|---|---|
 | `port` | `/dev/ttyUSB0` | USB adapter serial device; overridable at launch |
-| `baudrate` | `115200` | Bus baud rate, 8N1 |
+| `baudrate` | `9600` | Bus baud rate, 8N1 |
 | `front_address` | `1` | Nano controlling front-left and front-right |
 | `rear_address` | `2` | Nano controlling rear-left and rear-right |
-| `poll_rate` | `50.0` | Total bus transactions per second |
-| `reply_timeout` | `0.012` | Reply deadline in seconds |
+| `poll_rate` | `20.0` | Total bus transactions per second |
+| `reply_timeout` | `0.04` | Reply deadline in seconds |
 | `command_timeout` | `0.25` | Maximum ROS target age in seconds |
 | `feedback_timeout` | `0.25` | Maximum Nano feedback age in seconds |
 | `max_rpm` | `135.0` | Maximum absolute target RPM |
